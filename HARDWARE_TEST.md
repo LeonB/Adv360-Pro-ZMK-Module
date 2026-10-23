@@ -43,7 +43,7 @@ Hold or toggle each layer and compare both halves:
 
 | Layer | Expect (both halves) |
 |---|---|
-| 0 Base | off |
+| 0 Base | off (on the right half this means all three LEDs are dark, so it always looks "off" there) |
 | 1 Keypad | white |
 | 2 | blue |
 | 3 Mod | green |
@@ -104,10 +104,15 @@ Select a profile with Mod + `1`..`5` (profiles 1-5).
 
 ## 9. Idle auto-off (left half is configured, as in official)
 
+Do this test **on the Keypad layer** (toggle it with `&tog 1`, position 6), so both halves show white.
+On the Base layer the right half has nothing to show (layer 0 is dark, and no lock or link problem
+lights anything), so you cannot tell whether it is on or off there.
+
 - [ ] Leave the keyboard untouched for about 30 s (ZMK idle timeout): the left LEDs go dark **and
       the right LEDs go dark too**.
-- [ ] Press a key: both come back, with the same colours as before.
-- [ ] If you had toggled them off before idling, they stay off after waking.
+- [ ] Press a key on the left half: both come back white.
+- [ ] Repeat, waking it with a key on the right half: both come back white.
+- [ ] If you had toggled the indicators off (Mod + Space) before idling, they stay off after waking.
 
 ## 10. Backlight (per-key LEDs, separate system)
 
