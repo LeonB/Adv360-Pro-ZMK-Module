@@ -184,7 +184,7 @@ static void render_status(void) {
         .link_bonded = link_bonded,
         .link_connected = link_connected,
         .tick = blink_tick,
-        .brightness_permille = CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS * 10,
+        .brightness_permille = CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE,
     };
     struct adv360_rgb out[ADV360_STATUS_LED_COUNT];
 

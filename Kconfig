@@ -15,10 +15,14 @@ config ZMK_ADV360_STATUS_LEDS_ON_START
     bool "Turn Adv360 status LEDs on at startup"
     default y
 
-config ZMK_ADV360_STATUS_LEDS_BRIGHTNESS
-    int "Adv360 status LED brightness in percent"
-    range 1 100
-    default 20
+config ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE
+    int "Adv360 status LED brightness in per mille (1/1000) of full scale"
+    range 1 1000
+    default 4
+    help
+      Every colour channel is multiplied by this value / 1000 (rounded down). The default of 4
+      (= 1/250) matches the official Kinesis firmware, where a full 0xFF channel is output as 1.
+      This replaces the former percent-based CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS (default 20).
 
 config ZMK_ADV360_STATUS_LEDS_LOCK_COLOR
     hex "RGB hex colour of the Caps/Num/Scroll Lock LEDs"

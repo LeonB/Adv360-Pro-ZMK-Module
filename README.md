@@ -182,7 +182,7 @@ By default reporting the battery level over BLE is disabled as this can cause so
 
 ## Status LEDs
 
-The CAPS/NUM/SCROLL LOCK and layer LEDs are controlled by the module-local Adv360 status LED driver. Brightness defaults to `CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS=20` in [Kconfig](Kconfig) and can be overridden in the board defconfigs if needed. The `&stp STP_BAT` binding previews local battery level, and `&stp STP_TOG` toggles status LEDs on or off.
+The CAPS/NUM/SCROLL LOCK and layer LEDs are controlled by the module-local Adv360 status LED driver. Brightness defaults to `CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE=4` (1/250 of full scale, matching the official Kinesis firmware) in [Kconfig](Kconfig) and can be overridden in the board defconfigs if needed. The `&stp STP_BAT` binding previews local battery level, and `&stp STP_TOG` toggles status LEDs on or off.
 
 ## Layer colors
 

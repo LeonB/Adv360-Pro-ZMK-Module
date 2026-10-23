@@ -29,8 +29,8 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
 - **Brightness differs a lot.** The fork scales every indicator colour by
   `CONFIG_ZMK_RGB_UNDERGLOW_BRT_SCALE / 250` and the default scale is `1`, i.e. 4 per mille: a full
   `0xFF` channel is output as `1`. This module defaults to 20 % (`0xFF` -> `51`). The renderer takes
-  per-mille so both can be reproduced exactly; the module's default has intentionally not been
-  changed.
+  per-mille so both can be reproduced exactly. The module now defaults to the official value:
+  `CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE=4` (replaces the old percent option, default 20).
 - The fork persists no underglow state (`zmk_rgb_underglow_save_state()` returns 0), so there is
   nothing to port there.
 - Board config differences vs the official defconfigs: this module omits `CONFIG_ZMK_USB` on the
