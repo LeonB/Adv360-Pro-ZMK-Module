@@ -275,13 +275,25 @@ static void sync_layer_to_peripherals(void) {
  * Commands reach both halves through the global `&rgb_ug` / `&stp` behaviors, so the halves only
  * drift apart if one of them restarts or reconnects. The central has no event for that, so it
  * re-sends the shared LED state after boot and (debounced) after layer changes.
+ *
+ * Selecting an effect or switching on restarts the animation on the receiving half, so after boot
+ * only effects that do not animate are re-sent: an animated effect would visibly restart on the
+ * right half at every layer change.
  */
+static bool full_sync_done;
+
 static void sync_work_handler(struct k_work *work) {
+    const bool resend_state = !full_sync_done || !adv360_ug_effect_animates(ug.effect);
+
+    full_sync_done = true;
     sync_layer_to_peripherals();
-    invoke_on_peripherals("rgb_ug", RGB_EFS_CMD, ug.effect);
-    invoke_on_peripherals("rgb_ug", RGB_COLOR_HSB_CMD,
-                          RGB_COLOR_HSB_VAL(ug.color.h, ug.color.s, ug.color.b));
-    invoke_on_peripherals("rgb_ug", ug.on ? RGB_ON_CMD : RGB_OFF_CMD, 0);
+
+    if (resend_state) {
+        invoke_on_peripherals("rgb_ug", RGB_EFS_CMD, ug.effect);
+        invoke_on_peripherals("rgb_ug", RGB_COLOR_HSB_CMD,
+                              RGB_COLOR_HSB_VAL(ug.color.h, ug.color.s, ug.color.b));
+        invoke_on_peripherals("rgb_ug", ug.on ? RGB_ON_CMD : RGB_OFF_CMD, 0);
+    }
 }
 #else
 static void sync_layer_to_peripherals(void) {}
