@@ -1,0 +1,95 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#pragma once
+
+/*
+ * Pure (no Zephyr/ZMK dependencies) RGB underglow engine for the three Adv360 LEDs: the effect
+ * list, HSB colour state and the commands behind `&rgb_ug`, with the semantics of the Kinesis fork
+ * of ZMK (refil/zmk, app/src/rgb_underglow.c). The Zephyr glue in src/adv360_underglow.c drives it
+ * from a timer and ZMK events; the host tests drive it directly.
+ */
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include <zmk_keyboard_adv360/status_render.h>
+
+#define ADV360_UG_HUE_MAX 360
+#define ADV360_UG_SAT_MAX 100
+#define ADV360_UG_BRT_MAX 100
+#define ADV360_UG_SPD_MIN 1
+#define ADV360_UG_SPD_MAX 5
+
+/* Order and numbering match the fork: `&rgb_ug RGB_EFS n` and `stp` depend on it. */
+enum adv360_ug_effect {
+    ADV360_UG_EFFECT_SOLID,
+    ADV360_UG_EFFECT_BREATHE,
+    ADV360_UG_EFFECT_SPECTRUM,
+    ADV360_UG_EFFECT_SWIRL,
+    ADV360_UG_EFFECT_KINESIS, /* layer / lock / Bluetooth / link indicators (the official default) */
+    ADV360_UG_EFFECT_BATTERY,
+    ADV360_UG_EFFECT_TEST,
+    ADV360_UG_EFFECT_NUMBER,
+};
+
+struct adv360_ug_hsb {
+    uint16_t h;
+    uint8_t s;
+    uint8_t b;
+};
+
+struct adv360_ug_config {
+    uint16_t hue_start;
+    uint8_t sat_start;
+    uint8_t brt_start;
+    uint8_t spd_start;
+    uint8_t eff_start;
+    bool on_start;
+    uint16_t hue_step;
+    uint8_t sat_step;
+    uint8_t brt_step;
+    uint8_t brt_min;
+    uint8_t brt_max;
+};
+
+struct adv360_ug {
+    const struct adv360_ug_config *cfg;
+    struct adv360_ug_hsb color;
+    uint8_t speed;
+    uint8_t effect;
+    uint16_t animation_step;
+    bool on;
+};
+
+void adv360_ug_init(struct adv360_ug *ug, const struct adv360_ug_config *cfg);
+
+/* State changes only: switching the LED power and the animation timer is the glue's job. */
+void adv360_ug_on(struct adv360_ug *ug);
+void adv360_ug_off(struct adv360_ug *ug);
+
+int adv360_ug_calc_effect(const struct adv360_ug *ug, int direction);
+int adv360_ug_select_effect(struct adv360_ug *ug, int effect);
+int adv360_ug_cycle_effect(struct adv360_ug *ug, int direction);
+
+int adv360_ug_set_hsb(struct adv360_ug *ug, struct adv360_ug_hsb color);
+struct adv360_ug_hsb adv360_ug_calc_hue(const struct adv360_ug *ug, int direction);
+struct adv360_ug_hsb adv360_ug_calc_sat(const struct adv360_ug *ug, int direction);
+struct adv360_ug_hsb adv360_ug_calc_brt(const struct adv360_ug *ug, int direction);
+void adv360_ug_change_hue(struct adv360_ug *ug, int direction);
+void adv360_ug_change_sat(struct adv360_ug *ug, int direction);
+void adv360_ug_change_brt(struct adv360_ug *ug, int direction);
+void adv360_ug_change_spd(struct adv360_ug *ug, int direction);
+
+/* Does the current effect change over time (so the glue must keep a 50 ms timer running)? */
+bool adv360_ug_effect_animates(uint8_t effect);
+
+/*
+ * Advance the current effect by one 50 ms tick and render it. `ctx` supplies what the indicator
+ * effects show (layer, locks, Bluetooth/link state, battery, blink tick, colour scale).
+ */
+void adv360_ug_tick(struct adv360_ug *ug, const struct adv360_status_input *ctx,
+                    struct adv360_rgb out[ADV360_STATUS_LED_COUNT]);

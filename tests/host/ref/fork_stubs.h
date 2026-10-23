@@ -7,15 +7,83 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <errno.h>
+#include <stdlib.h>
+
 #define IS_ENABLED(x) (x)
 #define BIT(n) (1u << (n))
+#define CLAMP(v, lo, hi) ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
 #define LOG_ERR(...) ((void)0)
+#define LOG_DBG(...) ((void)0)
+#define LOG_WRN(...) ((void)0)
 
 #ifndef ZMK_BLE_IS_CENTRAL
 #error "compile with -DZMK_BLE_IS_CENTRAL=0 or =1"
 #endif
 
 #define CONFIG_ZMK_SPLIT_BLE 1
+
+/*
+ * Underglow settings. Config A is what the official firmware runs (ZMK's Kconfig.defaults plus
+ * EFF_START=4); config B (-DUG_CONFIG_B) exercises the non-default min/max/step/start paths.
+ */
+#ifdef UG_CONFIG_B
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_MIN 20
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_MAX 80
+#define CONFIG_ZMK_RGB_UNDERGLOW_HUE_STEP 7
+#define CONFIG_ZMK_RGB_UNDERGLOW_SAT_STEP 13
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_STEP 9
+#define CONFIG_ZMK_RGB_UNDERGLOW_HUE_START 100
+#define CONFIG_ZMK_RGB_UNDERGLOW_SAT_START 50
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_START 60
+#define CONFIG_ZMK_RGB_UNDERGLOW_SPD_START 2
+#define CONFIG_ZMK_RGB_UNDERGLOW_EFF_START 1
+#define CONFIG_ZMK_RGB_UNDERGLOW_ON_START 0
+#else
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_MIN 0
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_MAX 100
+#define CONFIG_ZMK_RGB_UNDERGLOW_HUE_STEP 10
+#define CONFIG_ZMK_RGB_UNDERGLOW_SAT_STEP 10
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_STEP 10
+#define CONFIG_ZMK_RGB_UNDERGLOW_HUE_START 0
+#define CONFIG_ZMK_RGB_UNDERGLOW_SAT_START 100
+#define CONFIG_ZMK_RGB_UNDERGLOW_BRT_START 100
+#define CONFIG_ZMK_RGB_UNDERGLOW_SPD_START 3
+#define CONFIG_ZMK_RGB_UNDERGLOW_EFF_START 4
+#define CONFIG_ZMK_RGB_UNDERGLOW_ON_START 1
+#endif
+#define CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER 0
+
+/* Zephyr timer / work-queue / LED strip stand-ins; the tests only care about the state they leave. */
+struct device {
+    int unused;
+};
+struct k_timer {
+    int unused;
+};
+struct k_work {
+    int unused;
+};
+#define K_NO_WAIT 0
+#define K_MSEC(x) (x)
+static inline void k_timer_start(struct k_timer *t, int a, int b) {
+    (void)t;
+    (void)a;
+    (void)b;
+}
+static inline void k_timer_stop(struct k_timer *t) { (void)t; }
+static inline void *zmk_workqueue_lowprio_work_q(void) { return 0; }
+static inline int k_work_submit_to_queue(void *q, struct k_work *w) {
+    (void)q;
+    (void)w;
+    return 0;
+}
+static inline int led_strip_update_rgb(const struct device *d, void *px, int n) {
+    (void)d;
+    (void)px;
+    (void)n;
+    return 0;
+}
 /* Defaults from refil/zmk app/Kconfig; the user's board defconfigs do not override them. */
 #define CONFIG_ZMK_RGB_UNDERGLOW_BRT_SCALE 1
 #define CONFIG_ZMK_RGB_UNDERGLOW_MOD_COLOR 0xFFFFFF

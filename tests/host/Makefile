@@ -22,25 +22,31 @@ build/baseline_other.o: ref/proffan_baseline.c ref/zephyr_stubs.h | build
 
 HDRS := $(wildcard ../../include/zmk_keyboard_adv360/*.h)
 
-FORK_OBJS := build/fork_left.o build/fork_right.o
-FORK_CFLAGS := -std=c11 -Wall -Wno-gnu-designator -Wno-sign-compare -Wno-unused-function -Wno-unused-variable -O1 -g
+FORK_OBJS := build/fork_left.o build/fork_right.o build/fork_cfgb.o
+ENGINE_SRC := ../../src/adv360_underglow_engine.c
+FORK_CFLAGS := -std=c11 -Wall -Wno-gnu-designator -Wno-sign-compare -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -O1 -g
 
-build/fork_left.o: ref/fork_kinesis.c ref/fork_stubs.h | build
-	$(CC) $(FORK_CFLAGS) -Iref -DZMK_BLE_IS_CENTRAL=1 -DFORK_RESET=fork_reset_left -DFORK_KINESIS_TICK=fork_tick_left -DFORK_BATTERY=fork_battery_left -c $< -o $@
-build/fork_right.o: ref/fork_kinesis.c ref/fork_stubs.h | build
-	$(CC) $(FORK_CFLAGS) -Iref -DZMK_BLE_IS_CENTRAL=0 -DFORK_RESET=fork_reset_right -DFORK_KINESIS_TICK=fork_tick_right -DFORK_BATTERY=fork_battery_right -c $< -o $@
+# Oracle objects: {central, peripheral} x {config A (official), config B (non-default)}.
+build/fork_left.o: ref/fork_underglow.c ref/fork_stubs.h | build
+	$(CC) $(FORK_CFLAGS) -Iref -DZMK_BLE_IS_CENTRAL=1 -DFORK_PFX=fork_left_ -c $< -o $@
+build/fork_right.o: ref/fork_underglow.c ref/fork_stubs.h | build
+	$(CC) $(FORK_CFLAGS) -Iref -DZMK_BLE_IS_CENTRAL=0 -DFORK_PFX=fork_right_ -c $< -o $@
+build/fork_cfgb.o: ref/fork_underglow.c ref/fork_stubs.h | build
+	$(CC) $(FORK_CFLAGS) -Iref -DZMK_BLE_IS_CENTRAL=1 -DUG_CONFIG_B -DFORK_PFX=fork_cfgb_ -c $< -o $@
 
-# The test binaries are tiny, so always rebuild them: GNU make 3.81 (macOS) only has 1 s mtime
-# resolution and can miss an edit made right after a build.
 build/test_fork_differential: FORCE test_fork_differential.c $(SRC) $(HDRS) $(FORK_OBJS)
 	$(CC) $(CFLAGS) $(INC) test_fork_differential.c $(SRC) $(FORK_OBJS) -o $@
+
+build/test_underglow_differential: FORCE test_underglow_differential.c $(ENGINE_SRC) $(SRC) $(HDRS) $(FORK_OBJS)
+	$(CC) $(CFLAGS) $(INC) test_underglow_differential.c $(ENGINE_SRC) $(SRC) $(FORK_OBJS) -o $@
 
 build/test_baseline_equiv: FORCE test_baseline_equiv.c $(SRC) $(HDRS) $(BASELINE_OBJS)
 	$(CC) $(CFLAGS) $(INC) test_baseline_equiv.c $(SRC) $(BASELINE_OBJS) -o $@
 
-test: build/test_baseline_equiv build/test_fork_differential
+test: build/test_baseline_equiv build/test_fork_differential build/test_underglow_differential
 	./build/test_baseline_equiv
 	./build/test_fork_differential
+	./build/test_underglow_differential
 
 clean:
 	rm -rf build

@@ -26,12 +26,12 @@ struct fork_world {
     bool periph_connected;
 };
 
-void fork_reset_left(void);
-void fork_tick_left(const struct fork_world *, struct fork_rgb[3]);
-void fork_battery_left(uint8_t, struct fork_rgb[3]);
-void fork_reset_right(void);
-void fork_tick_right(const struct fork_world *, struct fork_rgb[3]);
-void fork_battery_right(uint8_t, struct fork_rgb[3]);
+void fork_left_reset(void);
+void fork_left_tick(const struct fork_world *, struct fork_rgb[3]);
+void fork_left_battery(uint8_t, struct fork_rgb[3]);
+void fork_right_reset(void);
+void fork_right_tick(const struct fork_world *, struct fork_rgb[3]);
+void fork_right_battery(uint8_t, struct fork_rgb[3]);
 
 /* The official firmware's effective scale: CONFIG_ZMK_RGB_UNDERGLOW_BRT_SCALE (1) / 250. */
 #define FORK_PERMILLE 4
@@ -82,21 +82,21 @@ static void check_side(bool left) {
                     in.bt_profile = w.ble_profile_index;
                     in.bt_profile_open = w.ble_profile_open;
                     in.bt_profile_connected = w.ble_profile_connected;
-                    fork_reset_left();
+                    fork_left_reset();
                 } else {
                     /* 0: healthy; 1: not bonded; 2: bonded but not connected */
                     w.periph_bonded = state != 1;
                     w.periph_connected = state == 0;
                     in.link_bonded = w.periph_bonded;
                     in.link_connected = w.periph_connected;
-                    fork_reset_right();
+                    fork_right_reset();
                 }
 
                 for (unsigned t = 1; t <= TICKS; t++) {
                     struct fork_rgb want[3];
                     struct adv360_rgb got[3];
 
-                    (left ? fork_tick_left : fork_tick_right)(&w, want);
+                    (left ? fork_left_tick : fork_right_tick)(&w, want);
                     in.tick = t;
                     adv360_status_render(&in, got);
                     cases++;
@@ -119,7 +119,7 @@ static void check_battery(void) {
             .brightness_permille = FORK_PERMILLE,
         };
 
-        fork_battery_left(soc, want);
+        fork_left_battery(soc, want);
         adv360_status_render(&in, got);
         cases++;
         if (memcmp(want, got, sizeof(want)) != 0) {
