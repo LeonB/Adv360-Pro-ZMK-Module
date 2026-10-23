@@ -14,15 +14,34 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
 - [x] Right half: all LEDs blink red when not bonded (fast) or not connected (slow) to the left half
 - [x] Configurable lock indicator colour (`CONFIG_ZMK_ADV360_STATUS_LEDS_LOCK_COLOR`)
 
-### B. Underglow functionality (not started)
+### B. Underglow functionality
 
-- [ ] Effects: solid, breathe, spectrum, swirl, battery, test; select / cycle / `EFS` / `MEFS`
-- [ ] Runtime hue, saturation, brightness, speed (`RGB_HUI` ... `RGB_SPD`, `RGB_COLOR_HSB`)
-- [ ] `RGB_ON` / `RGB_OFF` / `RGB_TOG` that also switch external LED power
-- [ ] Auto-off on idle and on USB disconnect
-- [ ] Start-up and limit settings (`HUE/SAT/BRT/SPD/EFF/ON_START`, `BRT_MIN/MAX/SCALE`)
-- [ ] Central-to-peripheral sync of LED state
-- [ ] Keep `&rgb_ug` bindings working without keymap changes
+- [x] Effects: solid, breathe, spectrum, swirl, battery, test (plus the status effect); select / cycle
+      / `RGB_EFS` / momentary `RGB_MEFS` (`dt-bindings/zmk/rgb_mefs.h`)
+- [x] Runtime hue, saturation, brightness, speed (`RGB_HUI` ... `RGB_SPD`, `RGB_COLOR_HSB`)
+- [x] `RGB_ON` / `RGB_OFF` / `RGB_TOG`, switching the external LED power
+- [x] Auto-off on idle (on for the left half, as official) and on USB disconnect (off, as official)
+- [x] Start-up and limit settings: `CONFIG_ZMK_ADV360_STATUS_LEDS_{EFF,HUE,SAT,BRT,SPD}_START`,
+      `_{HUE,SAT,BRT}_STEP`, `_BRT_MIN`, `_BRT_MAX`, `_ON_START`
+- [x] Both halves stay in sync (global behaviors + a resync from the central, see below)
+- [x] `&rgb_ug` and `&stp` bindings work without keymap changes: the Kinesis V3.0 keymap builds
+      unchanged on this module for both halves
+
+### Deliberate differences from the official firmware
+
+- **Timer:** the fork redraws every 50 ms whenever the LEDs are on. This module runs the 50 ms timer
+  only while an effect animates or an indicator blinks, and otherwise redraws on events.
+- **Peripheral resync:** the fork pushes its LED state to the right half over a custom split message
+  2.5 s after it connects. Upstream ZMK gives the central no event for a peripheral connecting, so
+  the central re-sends the state 2.5 s after boot and 0.5 s after each layer change instead. Key
+  commands always reach both halves directly. If only the right half restarts, it catches up at the
+  next layer change.
+- **Naming:** Kconfig options are `CONFIG_ZMK_ADV360_STATUS_LEDS_*`, not `ZMK_RGB_UNDERGLOW_*`
+  (those symbols belong to upstream's underglow, which this module does not use). The fork's
+  `BRT_SCALE` is `BRIGHTNESS_PERMILLE`.
+- **`stp`:** the `&stp` node is declared in the board dtsi, as in the fork's global behaviors. A
+  keymap that declares its own `stp` node must drop it. `STP_TOG` is a module addition (toggle).
+- **Not carried over:** the fork's split LED message and its `zmk,underglow` chosen node.
 
 ## Findings
 
@@ -40,4 +59,4 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
 
 ## Tests
 
-See [tests/host/README.md](tests/host/README.md).
+See [tests/host/README.md](tests/host/README.md). Nothing in this branch has been run on a keyboard yet.

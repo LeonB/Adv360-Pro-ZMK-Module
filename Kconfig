@@ -29,4 +29,61 @@ config ZMK_ADV360_STATUS_LEDS_LOCK_COLOR
     range 0x000000 0xFFFFFF
     default 0xFFFFFF
 
+config ZMK_ADV360_STATUS_LEDS_EFF_START
+    int "Effect the LEDs start in (0 solid, 1 breathe, 2 spectrum, 3 swirl, 4 status, 5 battery, 6 test)"
+    range 0 6
+    default 4
+
+config ZMK_ADV360_STATUS_LEDS_HUE_START
+    int "Start hue in degrees (solid, breathe, spectrum, swirl and test effects)"
+    range 0 359
+    default 0
+
+config ZMK_ADV360_STATUS_LEDS_SAT_START
+    int "Start saturation in percent"
+    range 0 100
+    default 100
+
+config ZMK_ADV360_STATUS_LEDS_BRT_START
+    int "Start brightness in percent"
+    range ZMK_ADV360_STATUS_LEDS_BRT_MIN ZMK_ADV360_STATUS_LEDS_BRT_MAX
+    default ZMK_ADV360_STATUS_LEDS_BRT_MAX
+
+config ZMK_ADV360_STATUS_LEDS_SPD_START
+    int "Start animation speed"
+    range 1 5
+    default 3
+
+config ZMK_ADV360_STATUS_LEDS_HUE_STEP
+    int "Hue step in degrees"
+    range 0 359
+    default 10
+
+config ZMK_ADV360_STATUS_LEDS_SAT_STEP
+    int "Saturation step in percent"
+    range 0 100
+    default 10
+
+config ZMK_ADV360_STATUS_LEDS_BRT_STEP
+    int "Brightness step in percent"
+    range 0 100
+    default 10
+
+config ZMK_ADV360_STATUS_LEDS_BRT_MIN
+    int "Minimum brightness in percent"
+    range 0 100
+    default 0
+
+config ZMK_ADV360_STATUS_LEDS_BRT_MAX
+    int "Maximum brightness in percent"
+    range ZMK_ADV360_STATUS_LEDS_BRT_MIN 100
+    default 100
+
+config ZMK_ADV360_STATUS_LEDS_AUTO_OFF_IDLE
+    bool "Turn the LEDs off when the keyboard goes idle"
+
+config ZMK_ADV360_STATUS_LEDS_AUTO_OFF_USB
+    bool "Turn the LEDs off when USB is disconnected"
+    depends on USB_DEVICE_STACK
+
 endif # ZMK_ADV360_STATUS_LEDS

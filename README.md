@@ -180,9 +180,22 @@ By default this keyboard has NKRO enabled, however for compatibility reasons the
 
 By default reporting the battery level over BLE is disabled as this can cause some computers to spontaneously wake up repeatedly. If you'd like to enable this functionality change `CONFIG_BT_BAS=n` to `CONFIG_BT_BAS=y` in [adv360_left_nrf52840_zmk_defconfig](boards/kinesis/adv360/adv360_left_nrf52840_zmk_defconfig).
 
-## Status LEDs
+## Status LEDs and underglow
 
-The CAPS/NUM/SCROLL LOCK and layer LEDs are controlled by the module-local Adv360 status LED driver. Brightness defaults to `CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE=4` (1/250 of full scale, matching the official Kinesis firmware) in [Kconfig](Kconfig) and can be overridden in the board defconfigs if needed. The `&stp STP_BAT` binding previews local battery level, and `&stp STP_TOG` toggles status LEDs on or off.
+The three LEDs on each half show the active layer, Caps/Num/Scroll Lock, the Bluetooth profile
+(left) and the link to the left half (right), exactly as on the official Kinesis firmware. They are
+controlled by the module's own underglow driver, which also provides the `&rgb_ug` behavior (effects,
+hue/saturation/brightness/speed, on/off) and `&stp`:
+
+* `&rgb_ug RGB_TOG` etc. work as in ZMK; `RGB_EFS` takes 0 solid, 1 breathe, 2 spectrum, 3 swirl,
+  4 status (default), 5 battery, 6 self-test. `RGB_MEFS` (include `<dt-bindings/zmk/rgb_mefs.h>`)
+  selects an effect only while the key is held.
+* `&stp STP_BAT` shows the battery effect while held; `&stp STP_TOG` toggles the LEDs.
+* Settings are `CONFIG_ZMK_ADV360_STATUS_LEDS_*` in [Kconfig](Kconfig). Brightness of the status
+  colours defaults to `CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE=4` (1/250 of full scale,
+  matching the official firmware).
+
+See [PARITY.md](PARITY.md) for how this compares with the official firmware.
 
 ## Layer colors
 

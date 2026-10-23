@@ -72,6 +72,18 @@
         led-strip = <&led_strip>;
     };
 
+    behaviors {
+        /*
+         * Defined here, not in the keymap, so that the official Kinesis keymap (which expects the
+         * fork to provide `&stp`) works unchanged. The name must stay <= 8 characters: the
+         * behavior is invoked on the peripheral half by name.
+         */
+        stp: stp {
+            compatible = "kinesis,behavior-adv360-status-tap";
+            display-name = "Status Tap";
+            #binding-cells = <1>;
+        };
+    };
 };
 
 &pwm0 {

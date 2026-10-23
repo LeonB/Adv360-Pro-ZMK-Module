@@ -19,12 +19,6 @@
           flavor = "tap-preferred";
           bindings = <&kp>, <&kp>;
       };
-
-      stp: stp {
-          compatible = "kinesis,behavior-adv360-status-tap";
-          display-name = "Status Tap";
-          #binding-cells = <1>;
-      };
     };
 
   keymap {
