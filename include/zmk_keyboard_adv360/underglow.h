@@ -84,6 +84,20 @@ void adv360_ug_change_sat(struct adv360_ug *ug, int direction);
 void adv360_ug_change_brt(struct adv360_ug *ug, int direction);
 void adv360_ug_change_spd(struct adv360_ug *ug, int direction);
 
+/*
+ * Battery peek (`&stp STP_BAT`): show the battery effect while a key is held, even when the LEDs
+ * are off, then put things back. This is a small improvement on the official firmware, which leaves
+ * the LEDs dark when they are off and always returns to the status effect.
+ */
+struct adv360_ug_peek {
+    bool active;
+    uint8_t effect;
+    bool on;
+};
+
+void adv360_ug_battery_peek_begin(struct adv360_ug *ug, struct adv360_ug_peek *peek);
+void adv360_ug_battery_peek_end(struct adv360_ug *ug, struct adv360_ug_peek *peek);
+
 /* Is `effect` one that changes over time at all? */
 bool adv360_ug_effect_animates(uint8_t effect);
 

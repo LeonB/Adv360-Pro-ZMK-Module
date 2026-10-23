@@ -271,6 +271,37 @@ void adv360_ug_change_spd(struct adv360_ug *ug, int direction) {
     }
 }
 
+void adv360_ug_battery_peek_begin(struct adv360_ug *ug, struct adv360_ug_peek *peek) {
+    /* A second press while one is held must not overwrite what the first one saved. */
+    if (peek->active) {
+        return;
+    }
+
+    *peek = (struct adv360_ug_peek){.active = true, .effect = ug->effect, .on = ug->on};
+
+    adv360_ug_select_effect(ug, ADV360_UG_EFFECT_BATTERY);
+    if (!ug->on) {
+        adv360_ug_on(ug);
+    }
+}
+
+void adv360_ug_battery_peek_end(struct adv360_ug *ug, struct adv360_ug_peek *peek) {
+    if (!peek->active) {
+        return;
+    }
+    peek->active = false;
+
+    /* If something else changed the effect during the hold, keep that change. */
+    if (ug->effect != ADV360_UG_EFFECT_BATTERY) {
+        return;
+    }
+
+    adv360_ug_select_effect(ug, peek->effect);
+    if (!peek->on && ug->on) {
+        adv360_ug_off(ug);
+    }
+}
+
 bool adv360_ug_effect_animates(uint8_t effect) {
     switch (effect) {
     case ADV360_UG_EFFECT_BREATHE:

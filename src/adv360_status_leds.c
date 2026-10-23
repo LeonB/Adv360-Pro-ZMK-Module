@@ -550,6 +550,25 @@ int adv360_status_leds_set_layer(uint8_t layer) {
     return 0;
 }
 
+static struct adv360_ug_peek battery_peek;
+
+int adv360_status_leds_battery_peek(bool begin) {
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    ug_lock();
+    if (begin) {
+        adv360_ug_battery_peek_begin(&ug, &battery_peek);
+    } else {
+        adv360_ug_battery_peek_end(&ug, &battery_peek);
+    }
+    ug_unlock();
+
+    schedule_update();
+    return 0;
+}
+
 int adv360_status_leds_set_on(bool on) { return on ? zmk_rgb_underglow_on() : zmk_rgb_underglow_off(); }
 
 /* ---- Auto-off ---- */

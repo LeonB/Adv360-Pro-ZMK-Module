@@ -70,14 +70,15 @@ static int on_keymap_binding_convert_central_state_dependent_params(
 }
 
 /*
- * As in the official firmware, STP_BAT is the battery effect while the key is held and the status
- * (kinesis) effect again on release.
+ * STP_BAT shows the battery effect while the key is held, even when the LEDs are off, and puts the
+ * previous effect and on/off state back on release. (The official firmware shows nothing while the
+ * LEDs are off and always returns to the status effect.)
  */
 static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
                                      struct zmk_behavior_binding_event event) {
     switch (binding->param1) {
     case STP_BAT:
-        return zmk_rgb_underglow_select_effect(ADV360_UG_EFFECT_BATTERY);
+        return adv360_status_leds_battery_peek(true);
     case STP_TOG:
         return zmk_rgb_underglow_toggle();
     case ADV360_STP_SET_ON:
@@ -94,7 +95,7 @@ static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
                                       struct zmk_behavior_binding_event event) {
     switch (binding->param1) {
     case STP_BAT:
-        return zmk_rgb_underglow_select_effect(ADV360_UG_EFFECT_KINESIS);
+        return adv360_status_leds_battery_peek(false);
     case STP_TOG:
     case ADV360_STP_SET_ON:
         return ZMK_BEHAVIOR_OPAQUE;

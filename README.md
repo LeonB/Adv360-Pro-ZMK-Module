@@ -190,7 +190,8 @@ hue/saturation/brightness/speed, on/off) and `&stp`:
 * `&rgb_ug RGB_TOG` etc. work as in ZMK; `RGB_EFS` takes 0 solid, 1 breathe, 2 spectrum, 3 swirl,
   4 status (default), 5 battery, 6 self-test. `RGB_MEFS` (include `<dt-bindings/zmk/rgb_mefs.h>`)
   selects an effect only while the key is held.
-* `&stp STP_BAT` shows the battery effect while held; `&stp STP_TOG` toggles the LEDs.
+* `&stp STP_BAT` shows the battery level while held, even if the LEDs are switched off, and then
+  restores the previous effect; `&stp STP_TOG` toggles the LEDs.
 * Settings are `CONFIG_ZMK_ADV360_STATUS_LEDS_*` in [Kconfig](Kconfig). Brightness of the status
   colours defaults to `CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE=4` (1/250 of full scale,
   matching the official firmware).

@@ -53,6 +53,11 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
   `BRT_SCALE` is `BRIGHTNESS_PERMILLE`.
 - **`stp`:** the `&stp` node is declared in the board dtsi, as in the fork's global behaviors. A
   keymap that declares its own `stp` node must drop it. `STP_TOG` is a module addition (toggle).
+- **`STP_BAT` (a deliberate improvement):** the fork selects the battery effect on press and the
+  status effect on release, so with the indicators switched off it shows nothing and it always ends
+  on the status effect. Here the key shows the battery level while held even when the indicators are
+  off, and puts back the previous effect and on/off state on release. Starting from the default
+  setup (indicators on, status effect) the result is identical to the fork's; this is tested.
 - **Not carried over:** the fork's split LED message and its `zmk,underglow` chosen node.
 
 ## Findings
