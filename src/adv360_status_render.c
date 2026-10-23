@@ -61,6 +61,29 @@ static struct adv360_rgb battery_color(uint8_t soc, uint16_t permille) {
     }
 }
 
+int adv360_status_blink_limit(const struct adv360_status_input *in) {
+    switch (in->side) {
+    case ADV360_SIDE_LEFT:
+        if (in->bt_profile_open) {
+            return ADV360_BLINK_FAST_LIMIT;
+        }
+        return in->bt_profile_connected ? -1 : ADV360_BLINK_SLOW_LIMIT;
+    case ADV360_SIDE_RIGHT:
+        if (!in->link_bonded) {
+            return ADV360_BLINK_FAST_LIMIT;
+        }
+        return in->link_connected ? -1 : ADV360_BLINK_SLOW_LIMIT;
+    default:
+        return -1;
+    }
+}
+
+uint32_t adv360_blink_next_edge_ms(uint8_t limit, uint32_t elapsed_ms) {
+    const uint32_t phase_ms = (uint32_t)(limit + 1) * ADV360_BLINK_TICK_MS;
+
+    return phase_ms - (elapsed_ms % phase_ms);
+}
+
 void adv360_status_render(const struct adv360_status_input *in,
                           struct adv360_rgb out[ADV360_STATUS_LED_COUNT]) {
     uint8_t left_color;
@@ -87,13 +110,8 @@ void adv360_status_render(const struct adv360_status_input *in,
 
     switch (in->side) {
     case ADV360_SIDE_LEFT: {
-        bool blinking = false;
-
-        if (in->bt_profile_open) {
-            blinking = blink_dark(in->tick, ADV360_BLINK_FAST_LIMIT);
-        } else if (!in->bt_profile_connected) {
-            blinking = blink_dark(in->tick, ADV360_BLINK_SLOW_LIMIT);
-        }
+        const int limit = adv360_status_blink_limit(in);
+        const bool blinking = limit >= 0 && blink_dark(in->tick, limit);
 
         out[0] = in->caps_lock ? lock : off;
         out[1] = (in->bt_profile < ARRAY_LEN(bt_colors) && !blinking)
@@ -103,22 +121,14 @@ void adv360_status_render(const struct adv360_status_input *in,
         break;
     }
     case ADV360_SIDE_RIGHT: {
-        bool alert = false;
-        bool blinking = false;
+        const int limit = adv360_status_blink_limit(in);
+        const bool blinking = limit >= 0 && blink_dark(in->tick, limit);
 
         out[0] = scale_rgb(layer_colors[right_color], in->brightness_permille);
         out[1] = in->scroll_lock ? lock : off;
         out[2] = in->num_lock ? lock : off;
 
-        if (!in->link_bonded) {
-            alert = true;
-            blinking = blink_dark(in->tick, ADV360_BLINK_FAST_LIMIT);
-        } else if (!in->link_connected) {
-            alert = true;
-            blinking = blink_dark(in->tick, ADV360_BLINK_SLOW_LIMIT);
-        }
-
-        if (alert) {
+        if (limit >= 0) {
             /* A broken link overrides every LED with blinking red. */
             const struct adv360_rgb color = blinking ? off : scale_rgb(0xFF0000, in->brightness_permille);
             for (int i = 0; i < ADV360_STATUS_LED_COUNT; i++) {

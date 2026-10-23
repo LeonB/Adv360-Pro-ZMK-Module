@@ -40,13 +40,17 @@ build/test_fork_differential: FORCE test_fork_differential.c $(SRC) $(HDRS) $(FO
 build/test_underglow_differential: FORCE test_underglow_differential.c $(ENGINE_SRC) $(SRC) $(HDRS) $(FORK_OBJS)
 	$(CC) $(CFLAGS) $(INC) test_underglow_differential.c $(ENGINE_SRC) $(SRC) $(FORK_OBJS) -o $@
 
+build/test_blink_schedule: FORCE test_blink_schedule.c $(SRC) $(HDRS)
+	$(CC) $(CFLAGS) $(INC) test_blink_schedule.c $(SRC) -o $@
+
 build/test_baseline_equiv: FORCE test_baseline_equiv.c $(SRC) $(HDRS) $(BASELINE_OBJS)
 	$(CC) $(CFLAGS) $(INC) test_baseline_equiv.c $(SRC) $(BASELINE_OBJS) -o $@
 
-test: build/test_baseline_equiv build/test_fork_differential build/test_underglow_differential
+test: build/test_baseline_equiv build/test_fork_differential build/test_underglow_differential build/test_blink_schedule
 	./build/test_baseline_equiv
 	./build/test_fork_differential
 	./build/test_underglow_differential
+	./build/test_blink_schedule
 
 clean:
 	rm -rf build

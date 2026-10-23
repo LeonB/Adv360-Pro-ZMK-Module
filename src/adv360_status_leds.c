@@ -7,8 +7,9 @@
  * and renderer (adv360_status_render.c) from a timer and ZMK events, owns the LED strip and its
  * external power, and implements ZMK's zmk_rgb_underglow_*() API that the `&rgb_ug` behavior uses.
  *
- * The official Kinesis firmware polls every 50 ms while the LEDs are on. This driver only runs a
- * 50 ms timer while an effect animates or an indicator blinks, and otherwise redraws on events.
+ * The official Kinesis firmware polls every 50 ms while the LEDs are on. This driver redraws on
+ * events, runs a 50 ms timer only while an animated effect is selected, and wakes once per blink
+ * phase (not per tick) while an indicator blinks. Frames the strip already shows are not resent.
  */
 
 #define DT_DRV_COMPAT kinesis_adv360_status_leds
@@ -83,7 +84,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 BUILD_ASSERT(STATUS_LED_COUNT >= ADV360_STATUS_LED_COUNT,
              "Adv360 status LED strip must have at least three pixels");
 
-#define ADV360_BLINK_TICK_MS 50
 #define ADV360_SYNC_DELAY_MS 2500
 #define ADV360_SYNC_DEBOUNCE_MS 500
 
@@ -118,8 +118,9 @@ static bool bt_profile_connected = true;
 static bool link_bonded = true;
 static bool link_connected = true;
 
-/* 50 ms animation ticks while an indicator blinks; 0 whenever nothing blinks. */
-static uint32_t blink_tick;
+/* When the current blinking started (k_uptime_get() ms); the blink phase is derived from it. */
+static int64_t blink_start_ms;
+static bool blink_active;
 
 /*
  * Everything that touches `ug` (and the blink counter) runs under this lock: forwarded `&rgb_ug`
@@ -162,6 +163,10 @@ static int set_ext_power(bool on) {
     return on ? ext_power_enable(ext_power) : ext_power_disable(ext_power);
 }
 
+/* What the strip currently shows, so an identical frame is not sent again. */
+static struct adv360_rgb last_frame[ADV360_STATUS_LED_COUNT];
+static bool last_frame_valid;
+
 static void flush_pixels(const struct adv360_rgb *out, bool power_on) {
     int err;
 
@@ -171,26 +176,36 @@ static void flush_pixels(const struct adv360_rgb *out, bool power_on) {
             LOG_WRN("Failed to enable Adv360 status LED power: %d", err);
         } else {
             ext_power_is_on = 1;
+            last_frame_valid = false; /* a freshly powered strip shows nothing */
         }
     }
 
-    memset(pixels, 0, sizeof(pixels));
-    for (int i = 0; i < ADV360_STATUS_LED_COUNT; i++) {
-        pixels[i] = (struct led_rgb){.r = out[i].r, .g = out[i].g, .b = out[i].b};
+    /* An unpowered strip shows nothing, so there is nothing to send; and an unchanged frame is
+     * already on it. */
+    if (ext_power_is_on != 0 && (!last_frame_valid || memcmp(out, last_frame, sizeof(last_frame)))) {
+        memset(pixels, 0, sizeof(pixels));
+        for (int i = 0; i < ADV360_STATUS_LED_COUNT; i++) {
+            pixels[i] = (struct led_rgb){.r = out[i].r, .g = out[i].g, .b = out[i].b};
+        }
+
+        err = led_strip_update_rgb(led_strip, pixels, STATUS_LED_COUNT);
+        if (err) {
+            LOG_ERR("Failed to update Adv360 status LEDs: %d", err);
+            last_frame_valid = false;
+        } else {
+            memcpy(last_frame, out, sizeof(last_frame));
+            last_frame_valid = true;
+        }
     }
 
-    err = led_strip_update_rgb(led_strip, pixels, STATUS_LED_COUNT);
-    if (err) {
-        LOG_ERR("Failed to update Adv360 status LEDs: %d", err);
-        return;
-    }
-
+    /* Still switch the power off when the update failed, so the rail is not left on. */
     if (!power_on && ext_power_is_on != 0) {
         err = set_ext_power(false);
         if (err) {
             LOG_WRN("Failed to disable Adv360 status LED power: %d", err);
         } else {
             ext_power_is_on = 0;
+            last_frame_valid = false;
         }
     }
 }
@@ -207,37 +222,22 @@ static void refresh_connection_state(void) {
 #endif
 }
 
-/* Does the current Bluetooth / split-link state make an LED blink? */
-static bool blink_needed(void) {
-#if ADV360_STATUS_HAS_CENTRAL_STATE && IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
-    return bt_profile_open || !bt_profile_connected;
-#elif ADV360_STATUS_HAS_LINK_STATE
-    return !link_bonded || !link_connected;
-#else
-    return false;
-#endif
-}
-
 /*
- * Draw one frame. With `advance` (the 50 ms timer) the effect and the blink counter move on one
- * step; without it (an event such as a layer change) the current frame is redrawn from a copy, so
- * events never speed up animations or shorten blink phases. Caller holds ug_lock.
+ * Draw one frame. With `advance` (the 50 ms timer) animated effects move on one step; without it
+ * (an event such as a layer change) the current frame is redrawn from a copy, so events never speed
+ * up animations. Blink phase comes from the clock, not from a counter. Then schedule the next wake:
+ * one tick for animated effects, the next blink edge for blinking, otherwise none. Caller holds
+ * ug_lock.
  */
 static void render_frame(bool advance) {
     struct adv360_rgb out[ADV360_STATUS_LED_COUNT] = {0};
-    bool blinking = false;
+    int blink_limit = -1;
+    uint32_t blink_elapsed_ms = 0;
 
     refresh_connection_state();
 
     if (ug.on) {
-        blinking = ug.effect == ADV360_UG_EFFECT_KINESIS && blink_needed();
-        if (!blinking) {
-            blink_tick = 0;
-        } else if (advance) {
-            blink_tick++;
-        }
-
-        const struct adv360_status_input ctx = {
+        struct adv360_status_input ctx = {
 #if IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
             .side = ADV360_SIDE_LEFT,
 #elif IS_ENABLED(CONFIG_BOARD_ADV360_RIGHT)
@@ -256,9 +256,25 @@ static void render_frame(bool advance) {
             .bt_profile_connected = bt_profile_connected,
             .link_bonded = link_bonded,
             .link_connected = link_connected,
-            .tick = blink_tick,
             .brightness_permille = CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE,
         };
+
+        if (ug.effect == ADV360_UG_EFFECT_KINESIS) {
+            blink_limit = adv360_status_blink_limit(&ctx);
+        }
+
+        if (blink_limit < 0) {
+            blink_active = false;
+        } else {
+            const int64_t now = k_uptime_get();
+
+            if (!blink_active) {
+                blink_active = true;
+                blink_start_ms = now;
+            }
+            blink_elapsed_ms = (uint32_t)(now - blink_start_ms);
+            ctx.tick = blink_elapsed_ms / ADV360_BLINK_TICK_MS;
+        }
 
         if (advance) {
             adv360_ug_tick(&ug, &ctx, out);
@@ -268,14 +284,19 @@ static void render_frame(bool advance) {
             adv360_ug_tick(&preview, &ctx, out);
         }
     } else {
-        blink_tick = 0;
+        blink_active = false;
     }
 
     flush_pixels(out, ug.on);
 
-    if (ug.on && (adv360_ug_effect_animates(ug.effect) || blinking)) {
-        /* No-op if the timer is already pending, so redraws do not push it out. */
+    if (ug.on && adv360_ug_effect_animates(ug.effect)) {
+        /* No-op if the timer is already pending, so redraws do not push an animation out. */
         k_work_schedule(&tick_work, K_MSEC(ADV360_BLINK_TICK_MS));
+    } else if (ug.on && blink_limit >= 0) {
+        /* The delay is computed from the clock, so replacing a pending wake is always correct. */
+        k_work_reschedule(&tick_work, K_MSEC(adv360_blink_next_edge_ms(blink_limit, blink_elapsed_ms)));
+    } else {
+        k_work_cancel_delayable(&tick_work);
     }
 }
 

@@ -17,6 +17,9 @@
 
 #define ADV360_STATUS_LED_COUNT 3
 
+/* One animation tick, in milliseconds. */
+#define ADV360_BLINK_TICK_MS 50
+
 /* A blink phase lasts (limit + 1) ticks: unpaired blinks fast, disconnected blinks slowly. */
 #define ADV360_BLINK_FAST_LIMIT 2
 #define ADV360_BLINK_SLOW_LIMIT 13
@@ -59,3 +62,17 @@ struct adv360_status_input {
 
 void adv360_status_render(const struct adv360_status_input *in,
                           struct adv360_rgb out[ADV360_STATUS_LED_COUNT]);
+
+/*
+ * The blink limit (ADV360_BLINK_FAST_LIMIT / ADV360_BLINK_SLOW_LIMIT) the state in `in` calls for,
+ * or -1 when nothing blinks. This is the single place that decides it: the renderer and the driver
+ * (which only wakes while something blinks) both use it.
+ */
+int adv360_status_blink_limit(const struct adv360_status_input *in);
+
+/*
+ * Milliseconds until a blink phase of the given limit next changes, `elapsed_ms` after blinking
+ * began (always between 1 and one phase length). The driver sleeps until then instead of waking
+ * every tick; `tick` for the renderer is elapsed_ms / ADV360_BLINK_TICK_MS.
+ */
+uint32_t adv360_blink_next_edge_ms(uint8_t limit, uint32_t elapsed_ms);

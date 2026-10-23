@@ -33,8 +33,11 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
   half on the Bluetooth thread while the tick runs on the work queue. Events redraw the current
   frame without advancing animations or blink counters; only the 50 ms timer does.
 - **Auto-off:** idle and USB auto-off are mirrored to the right half, as in the fork.
-- **Timer:** the fork redraws every 50 ms whenever the LEDs are on. This module runs the 50 ms timer
-  only while an effect animates or an indicator blinks, and otherwise redraws on events.
+- **Timer:** the fork redraws every 50 ms whenever the LEDs are on. This module redraws on events;
+  runs the 50 ms timer only while an animated effect (breathe, spectrum, swirl, self-test) is
+  selected; and, while an indicator blinks, wakes once per blink phase (150 ms fast, 700 ms slow)
+  instead of every tick. The blink phase comes from the clock. A frame the strip already shows is
+  not sent again, and an unpowered strip is not written to.
 - **Peripheral resync:** the fork pushes its LED state to the right half over a custom split message
   2.5 s after it connects. Upstream ZMK gives the central no event for a peripheral connecting, so
   the central re-sends the state 2.5 s after boot and 0.5 s after each layer change instead (after
