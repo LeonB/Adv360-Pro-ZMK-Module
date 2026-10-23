@@ -29,6 +29,10 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
 
 ### Deliberate differences from the official firmware
 
+- **Concurrency:** all LED state is guarded by one mutex, because forwarded commands reach the right
+  half on the Bluetooth thread while the tick runs on the work queue. Events redraw the current
+  frame without advancing animations or blink counters; only the 50 ms timer does.
+- **Auto-off:** idle and USB auto-off are mirrored to the right half, as in the fork.
 - **Timer:** the fork redraws every 50 ms whenever the LEDs are on. This module runs the 50 ms timer
   only while an effect animates or an indicator blinks, and otherwise redraws on events.
 - **Peripheral resync:** the fork pushes its LED state to the right half over a custom split message
@@ -54,7 +58,10 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
 - The fork persists no underglow state (`zmk_rgb_underglow_save_state()` returns 0), so there is
   nothing to port there.
 - Board config differences vs the official defconfigs: this module omits `CONFIG_ZMK_USB` on the
-  right half, enables `CONFIG_ZMK_BLE_EXPERIMENTAL_FEATURES`, and defaults `CONFIG_BT_BAS=n`.
+  right half. `CONFIG_BT_BAS=y` (left) and `CONFIG_ZMK_BLE_EXPERIMENTAL_FEATURES=n` follow the
+  keymap fork this branch was made for; ProfFan's module defaults to `BT_BAS=n` and experimental on.
+  Experimental BLE features change connection/security handling, so after flashing it may be
+  necessary to re-pair, as with any firmware change that affects bonds.
 - `ext_power_enable()` schedules a settings save on every call, so the driver now only calls it
   when the power state changes (the blink timer redraws every 50 ms).
 

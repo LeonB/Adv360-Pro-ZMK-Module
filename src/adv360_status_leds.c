@@ -83,10 +83,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 BUILD_ASSERT(STATUS_LED_COUNT >= ADV360_STATUS_LED_COUNT,
              "Adv360 status LED strip must have at least three pixels");
 
-/* Behavior parameter used to pick the layer; must match behavior_adv360_status_tap.c. */
-#define ADV360_STP_SET_LAYER 2
-#define ADV360_STP_SET_ON 3
-
 #define ADV360_BLINK_TICK_MS 50
 #define ADV360_SYNC_DELAY_MS 2500
 #define ADV360_SYNC_DEBOUNCE_MS 500
@@ -125,10 +121,30 @@ static bool link_connected = true;
 /* 50 ms animation ticks while an indicator blinks; 0 whenever nothing blinks. */
 static uint32_t blink_tick;
 
-static struct k_work_delayable tick_work;
+/*
+ * Everything that touches `ug` (and the blink counter) runs under this lock: forwarded `&rgb_ug`
+ * and `&stp` commands arrive on the Bluetooth thread on the right half, while the tick runs on the
+ * system work queue. The mutex is recursive, so API functions may call each other.
+ */
+K_MUTEX_DEFINE(adv360_ug_lock);
+
+/* False until adv360_status_leds_init() has set up `ug`; events and commands before that are ignored. */
+static bool ready;
+
+static void tick_handler(struct k_work *work);
+static void redraw_handler(struct k_work *work);
+
+/* The 50 ms timer: advances animations and blinking. Only scheduled while something needs it. */
+static K_WORK_DELAYABLE_DEFINE(tick_work, tick_handler);
+/* Redraws the current frame after an event, without advancing time. */
+static K_WORK_DEFINE(redraw_work, redraw_handler);
 #if ADV360_STATUS_CAN_SYNC
-static struct k_work_delayable sync_work;
+static void sync_work_handler(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(sync_work, sync_work_handler);
 #endif
+
+static inline void ug_lock(void) { k_mutex_lock(&adv360_ug_lock, K_FOREVER); }
+static inline void ug_unlock(void) { k_mutex_unlock(&adv360_ug_lock); }
 
 /*
  * ext_power_enable()/disable() schedule a settings save every time they are called, so only call
@@ -202,7 +218,12 @@ static bool blink_needed(void) {
 #endif
 }
 
-static void tick_handler(struct k_work *work) {
+/*
+ * Draw one frame. With `advance` (the 50 ms timer) the effect and the blink counter move on one
+ * step; without it (an event such as a layer change) the current frame is redrawn from a copy, so
+ * events never speed up animations or shorten blink phases. Caller holds ug_lock.
+ */
+static void render_frame(bool advance) {
     struct adv360_rgb out[ADV360_STATUS_LED_COUNT] = {0};
     bool blinking = false;
 
@@ -210,7 +231,11 @@ static void tick_handler(struct k_work *work) {
 
     if (ug.on) {
         blinking = ug.effect == ADV360_UG_EFFECT_KINESIS && blink_needed();
-        blink_tick = blinking ? blink_tick + 1 : 0;
+        if (!blinking) {
+            blink_tick = 0;
+        } else if (advance) {
+            blink_tick++;
+        }
 
         const struct adv360_status_input ctx = {
 #if IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
@@ -235,7 +260,13 @@ static void tick_handler(struct k_work *work) {
             .brightness_permille = CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS_PERMILLE,
         };
 
-        adv360_ug_tick(&ug, &ctx, out);
+        if (advance) {
+            adv360_ug_tick(&ug, &ctx, out);
+        } else {
+            struct adv360_ug preview = ug;
+
+            adv360_ug_tick(&preview, &ctx, out);
+        }
     } else {
         blink_tick = 0;
     }
@@ -243,11 +274,28 @@ static void tick_handler(struct k_work *work) {
     flush_pixels(out, ug.on);
 
     if (ug.on && (adv360_ug_effect_animates(ug.effect) || blinking)) {
-        k_work_reschedule(&tick_work, K_MSEC(ADV360_BLINK_TICK_MS));
+        /* No-op if the timer is already pending, so redraws do not push it out. */
+        k_work_schedule(&tick_work, K_MSEC(ADV360_BLINK_TICK_MS));
     }
 }
 
-static void schedule_update(void) { k_work_reschedule(&tick_work, K_NO_WAIT); }
+static void tick_handler(struct k_work *work) {
+    ug_lock();
+    render_frame(true);
+    ug_unlock();
+}
+
+static void redraw_handler(struct k_work *work) {
+    ug_lock();
+    render_frame(false);
+    ug_unlock();
+}
+
+static void schedule_update(void) {
+    if (ready) {
+        k_work_submit(&redraw_work);
+    }
+}
 
 #if ADV360_STATUS_CAN_SYNC
 static void invoke_on_peripherals(const char *behavior, uint32_t param1, uint32_t param2) {
@@ -283,16 +331,26 @@ static void sync_layer_to_peripherals(void) {
 static bool full_sync_done;
 
 static void sync_work_handler(struct k_work *work) {
-    const bool resend_state = !full_sync_done || !adv360_ug_effect_animates(ug.effect);
+    struct adv360_ug snapshot;
+    bool resend_state;
 
+    if (!ready) {
+        return;
+    }
+
+    ug_lock();
+    snapshot = ug;
+    ug_unlock();
+
+    resend_state = !full_sync_done || !adv360_ug_effect_animates(snapshot.effect);
     full_sync_done = true;
     sync_layer_to_peripherals();
 
     if (resend_state) {
-        invoke_on_peripherals("rgb_ug", RGB_EFS_CMD, ug.effect);
+        invoke_on_peripherals("rgb_ug", RGB_EFS_CMD, snapshot.effect);
         invoke_on_peripherals("rgb_ug", RGB_COLOR_HSB_CMD,
-                              RGB_COLOR_HSB_VAL(ug.color.h, ug.color.s, ug.color.b));
-        invoke_on_peripherals("rgb_ug", ug.on ? RGB_ON_CMD : RGB_OFF_CMD, 0);
+                              RGB_COLOR_HSB_VAL(snapshot.color.h, snapshot.color.s, snapshot.color.b));
+        invoke_on_peripherals("rgb_ug", snapshot.on ? RGB_ON_CMD : RGB_OFF_CMD, 0);
     }
 }
 #else
@@ -302,28 +360,71 @@ static void sync_layer_to_peripherals(void) {}
 /* ---- Public API: ZMK's zmk_rgb_underglow_*() (see zmk/rgb_underglow.h), on the Adv360 engine ---- */
 
 int zmk_rgb_underglow_get_state(bool *on_off) {
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    ug_lock();
     *on_off = ug.on;
+    ug_unlock();
     return 0;
 }
 
 int zmk_rgb_underglow_on(void) {
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    ug_lock();
     adv360_ug_on(&ug);
+    ug_unlock();
     schedule_update();
     return 0;
 }
 
 int zmk_rgb_underglow_off(void) {
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    ug_lock();
     adv360_ug_off(&ug);
+    ug_unlock();
     schedule_update();
     return 0;
 }
 
-int zmk_rgb_underglow_toggle(void) { return ug.on ? zmk_rgb_underglow_off() : zmk_rgb_underglow_on(); }
+int zmk_rgb_underglow_toggle(void) {
+    bool on;
 
-int zmk_rgb_underglow_calc_effect(int direction) { return adv360_ug_calc_effect(&ug, direction); }
+    if (zmk_rgb_underglow_get_state(&on) != 0) {
+        return -ENODEV;
+    }
+
+    return on ? zmk_rgb_underglow_off() : zmk_rgb_underglow_on();
+}
+
+int zmk_rgb_underglow_calc_effect(int direction) {
+    int effect = 0;
+
+    if (ready) {
+        ug_lock();
+        effect = adv360_ug_calc_effect(&ug, direction);
+        ug_unlock();
+    }
+    return effect;
+}
 
 int zmk_rgb_underglow_select_effect(int effect) {
-    int err = adv360_ug_select_effect(&ug, effect);
+    int err;
+
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    ug_lock();
+    err = adv360_ug_select_effect(&ug, effect);
+    ug_unlock();
 
     if (err == 0) {
         schedule_update();
@@ -332,11 +433,33 @@ int zmk_rgb_underglow_select_effect(int effect) {
 }
 
 int zmk_rgb_underglow_cycle_effect(int direction) {
-    return zmk_rgb_underglow_select_effect(zmk_rgb_underglow_calc_effect(direction));
+    int err;
+
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    /* Calculate and select under one lock so the cycle cannot race another command. */
+    ug_lock();
+    err = adv360_ug_cycle_effect(&ug, direction);
+    ug_unlock();
+
+    if (err == 0) {
+        schedule_update();
+    }
+    return err;
 }
 
 int zmk_rgb_underglow_set_hsb(struct zmk_led_hsb color) {
-    int err = adv360_ug_set_hsb(&ug, (struct adv360_ug_hsb){.h = color.h, .s = color.s, .b = color.b});
+    int err;
+
+    if (!ready) {
+        return -ENODEV;
+    }
+
+    ug_lock();
+    err = adv360_ug_set_hsb(&ug, (struct adv360_ug_hsb){.h = color.h, .s = color.s, .b = color.b});
+    ug_unlock();
 
     if (err == 0) {
         schedule_update();
@@ -346,40 +469,45 @@ int zmk_rgb_underglow_set_hsb(struct zmk_led_hsb color) {
 
 #define ADV360_HSB_TO_ZMK(c) ((struct zmk_led_hsb){.h = (c).h, .s = (c).s, .b = (c).b})
 
+#define ADV360_CALC_HSB(fn, direction)                                                             \
+    ({                                                                                             \
+        struct zmk_led_hsb result = {0};                                                           \
+        if (ready) {                                                                               \
+            ug_lock();                                                                             \
+            result = ADV360_HSB_TO_ZMK(fn(&ug, direction));                                        \
+            ug_unlock();                                                                           \
+        }                                                                                          \
+        result;                                                                                    \
+    })
+
 struct zmk_led_hsb zmk_rgb_underglow_calc_hue(int direction) {
-    return ADV360_HSB_TO_ZMK(adv360_ug_calc_hue(&ug, direction));
+    return ADV360_CALC_HSB(adv360_ug_calc_hue, direction);
 }
 
 struct zmk_led_hsb zmk_rgb_underglow_calc_sat(int direction) {
-    return ADV360_HSB_TO_ZMK(adv360_ug_calc_sat(&ug, direction));
+    return ADV360_CALC_HSB(adv360_ug_calc_sat, direction);
 }
 
 struct zmk_led_hsb zmk_rgb_underglow_calc_brt(int direction) {
-    return ADV360_HSB_TO_ZMK(adv360_ug_calc_brt(&ug, direction));
+    return ADV360_CALC_HSB(adv360_ug_calc_brt, direction);
 }
 
-int zmk_rgb_underglow_change_hue(int direction) {
-    adv360_ug_change_hue(&ug, direction);
-    schedule_update();
-    return 0;
-}
+#define ADV360_CHANGE(fn, direction)                                                               \
+    do {                                                                                           \
+        if (!ready) {                                                                              \
+            return -ENODEV;                                                                        \
+        }                                                                                          \
+        ug_lock();                                                                                 \
+        fn(&ug, direction);                                                                        \
+        ug_unlock();                                                                               \
+        schedule_update();                                                                         \
+        return 0;                                                                                  \
+    } while (0)
 
-int zmk_rgb_underglow_change_sat(int direction) {
-    adv360_ug_change_sat(&ug, direction);
-    schedule_update();
-    return 0;
-}
-
-int zmk_rgb_underglow_change_brt(int direction) {
-    adv360_ug_change_brt(&ug, direction);
-    schedule_update();
-    return 0;
-}
-
-int zmk_rgb_underglow_change_spd(int direction) {
-    adv360_ug_change_spd(&ug, direction);
-    return 0;
-}
+int zmk_rgb_underglow_change_hue(int direction) { ADV360_CHANGE(adv360_ug_change_hue, direction); }
+int zmk_rgb_underglow_change_sat(int direction) { ADV360_CHANGE(adv360_ug_change_sat, direction); }
+int zmk_rgb_underglow_change_brt(int direction) { ADV360_CHANGE(adv360_ug_change_brt, direction); }
+int zmk_rgb_underglow_change_spd(int direction) { ADV360_CHANGE(adv360_ug_change_spd, direction); }
 
 /* ---- Hooks for the `stp` behavior ---- */
 
@@ -398,6 +526,7 @@ int adv360_status_leds_set_on(bool on) { return on ? zmk_rgb_underglow_on() : zm
 static int auto_state(bool target_wake_state) {
     static bool is_awake = true;
     static bool state_before_sleeping;
+    bool turn_on;
 
     /* A wake event while awake, or a sleep event while asleep, is a no-op. */
     if (target_wake_state == is_awake) {
@@ -406,11 +535,17 @@ static int auto_state(bool target_wake_state) {
     is_awake = target_wake_state;
 
     if (is_awake) {
-        return state_before_sleeping ? zmk_rgb_underglow_on() : zmk_rgb_underglow_off();
+        turn_on = state_before_sleeping;
+    } else {
+        zmk_rgb_underglow_get_state(&state_before_sleeping);
+        turn_on = false;
     }
 
-    state_before_sleeping = ug.on;
-    return zmk_rgb_underglow_off();
+    /* The official firmware sends the new on/off state to the right half too. */
+#if ADV360_STATUS_CAN_SYNC
+    invoke_on_peripherals("rgb_ug", turn_on ? RGB_ON_CMD : RGB_OFF_CMD, 0);
+#endif
+    return turn_on ? zmk_rgb_underglow_on() : zmk_rgb_underglow_off();
 }
 #endif
 
@@ -424,8 +559,16 @@ static int adv360_status_leds_listener(const zmk_event_t *eh) {
     }
 
     if (as_zmk_battery_state_changed(eh) != NULL) {
-        if (ug.on && ug.effect == ADV360_UG_EFFECT_BATTERY) {
-            schedule_update();
+        if (ready) {
+            bool battery_shown;
+
+            ug_lock();
+            battery_shown = ug.on && ug.effect == ADV360_UG_EFFECT_BATTERY;
+            ug_unlock();
+
+            if (battery_shown) {
+                schedule_update();
+            }
         }
         return ZMK_EV_EVENT_BUBBLE;
     }
@@ -495,15 +638,13 @@ static int adv360_status_leds_init(void) {
     }
 
     adv360_ug_init(&ug, &ug_cfg);
-    k_work_init_delayable(&tick_work, tick_handler);
-#if ADV360_STATUS_CAN_SYNC
-    k_work_init_delayable(&sync_work, sync_work_handler);
-#endif
 
 #if ADV360_STATUS_HAS_CENTRAL_STATE
     hid_indicators = zmk_hid_indicators_get_current_profile();
     active_layer = zmk_keymap_highest_layer_active();
 #endif
+
+    ready = true;
 
     schedule_update();
     sync_layer_to_peripherals();

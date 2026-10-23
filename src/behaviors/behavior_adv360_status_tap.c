@@ -21,10 +21,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
-/* Internal parameters, never written in a keymap; must match adv360_status_leds.c. */
-#define ADV360_STP_SET_LAYER 2
-#define ADV360_STP_SET_ON 3
-
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
 static const struct behavior_parameter_value_metadata param_values[] = {

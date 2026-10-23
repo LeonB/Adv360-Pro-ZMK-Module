@@ -12,3 +12,10 @@
  */
 #define STP_BAT 0
 #define STP_TOG 1
+
+/*
+ * The fork's stp.h also pulls in the pointing macros and (with rgb.h) the RGB_EFS / RGB_MEFS
+ * helpers, and official keymaps rely on that.
+ */
+#include <dt-bindings/zmk/pointing.h>
+#include <dt-bindings/zmk/rgb_mefs.h>

@@ -1,6 +1,6 @@
 /*
  * Host-side stand-ins for the Zephyr/ZMK symbols used by the fork's rgb_underglow.c snippets in
- * fork_kinesis.c. The tests drive these through the fork_* entry points at the bottom of that file.
+ * fork_underglow.c. The tests drive these through the fork_* entry points at the bottom of that file.
  */
 #pragma once
 #include <stdbool.h>

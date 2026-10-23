@@ -1,6 +1,6 @@
 /*
  * Differential test: the module's renderer must match the official Kinesis firmware (the fork's
- * "kinesis" and battery effects, ref/fork_kinesis.c) pixel for pixel, tick by tick, for every
+ * "kinesis" and battery effects, ref/fork_underglow.c) pixel for pixel, tick by tick, for every
  * steady-state scenario.
  *
  * The fork keeps a shared blink counter, so the oracle is driven from a fresh reset for each
@@ -58,7 +58,7 @@ static void report(const char *what, const struct fork_world *w, unsigned tick,
 static void check_side(bool left) {
     for (unsigned layer = 0; layer < 32; layer++)
         for (unsigned ind = 0; ind < 8; ind++)
-            for (int state = 0; state < (left ? 10 : 3); state++) {
+            for (int state = 0; state < (left ? 15 : 3); state++) {
                 struct fork_world w = {
                     .highest_layer = layer,
                     .hid_indicators = ind,
@@ -75,10 +75,10 @@ static void check_side(bool left) {
                 };
 
                 if (left) {
-                    /* states 0-4: connected profile 0-4; 5: open (unpaired); 6-9: disconnected */
-                    w.ble_profile_index = state < 5 ? state : (state == 5 ? 1 : state - 6);
-                    w.ble_profile_open = state == 5;
-                    w.ble_profile_connected = state < 5;
+                    /* every profile (0-4) x {connected, open (unpaired), disconnected} */
+                    w.ble_profile_index = state / 3;
+                    w.ble_profile_open = state % 3 == 1;
+                    w.ble_profile_connected = state % 3 == 0;
                     in.bt_profile = w.ble_profile_index;
                     in.bt_profile_open = w.ble_profile_open;
                     in.bt_profile_connected = w.ble_profile_connected;

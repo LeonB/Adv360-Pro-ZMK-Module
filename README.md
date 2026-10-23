@@ -178,7 +178,7 @@ By default this keyboard has NKRO enabled, however for compatibility reasons the
 
 ## Battery reporting
 
-By default reporting the battery level over BLE is disabled as this can cause some computers to spontaneously wake up repeatedly. If you'd like to enable this functionality change `CONFIG_BT_BAS=n` to `CONFIG_BT_BAS=y` in [adv360_left_nrf52840_zmk_defconfig](boards/kinesis/adv360/adv360_left_nrf52840_zmk_defconfig).
+In this fork reporting the battery level over BLE is enabled (`CONFIG_BT_BAS=y`), although it can cause some computers to spontaneously wake up repeatedly. If you see that, change it to `CONFIG_BT_BAS=n` in [adv360_left_nrf52840_zmk_defconfig](boards/kinesis/adv360/adv360_left_nrf52840_zmk_defconfig).
 
 ## Status LEDs and underglow
 

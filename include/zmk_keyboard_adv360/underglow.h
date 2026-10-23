@@ -9,7 +9,7 @@
 /*
  * Pure (no Zephyr/ZMK dependencies) RGB underglow engine for the three Adv360 LEDs: the effect
  * list, HSB colour state and the commands behind `&rgb_ug`, with the semantics of the Kinesis fork
- * of ZMK (refil/zmk, app/src/rgb_underglow.c). The Zephyr glue in src/adv360_underglow.c drives it
+ * of ZMK (refil/zmk, app/src/rgb_underglow.c). The Zephyr glue in src/adv360_status_leds.c drives it
  * from a timer and ZMK events; the host tests drive it directly.
  */
 
