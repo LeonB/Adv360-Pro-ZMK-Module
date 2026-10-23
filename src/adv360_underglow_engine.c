@@ -283,6 +283,39 @@ bool adv360_ug_effect_animates(uint8_t effect) {
     }
 }
 
+bool adv360_ug_animating(const struct adv360_ug *ug) {
+    if (!adv360_ug_effect_animates(ug->effect)) {
+        return false;
+    }
+
+    /* effect_test() ends on all white once its step passes three full hue turns, and stays there. */
+    return !(ug->effect == ADV360_UG_EFFECT_TEST && ug->animation_step > ADV360_UG_HUE_MAX * 3);
+}
+
+bool adv360_ug_is_default(const struct adv360_ug *ug) {
+    return ug->color.h == ug->cfg->hue_start && ug->color.s == ug->cfg->sat_start &&
+           ug->color.b == ug->cfg->brt_start && ug->effect == ug->cfg->eff_start &&
+           ug->on == ug->cfg->on_start;
+}
+
+struct adv360_wake_plan adv360_ug_plan_wake(const struct adv360_ug *ug, int blink_limit,
+                                            uint32_t blink_elapsed_ms) {
+    if (!ug->on) {
+        return (struct adv360_wake_plan){ADV360_WAKE_NONE, 0};
+    }
+
+    if (adv360_ug_animating(ug)) {
+        return (struct adv360_wake_plan){ADV360_WAKE_TICK, ADV360_BLINK_TICK_MS};
+    }
+
+    if (ug->effect == ADV360_UG_EFFECT_KINESIS && blink_limit >= 0) {
+        return (struct adv360_wake_plan){ADV360_WAKE_BLINK_EDGE,
+                                         adv360_blink_next_edge_ms(blink_limit, blink_elapsed_ms)};
+    }
+
+    return (struct adv360_wake_plan){ADV360_WAKE_NONE, 0};
+}
+
 void adv360_ug_tick(struct adv360_ug *ug, const struct adv360_status_input *ctx,
                     struct adv360_rgb out[ADV360_STATUS_LED_COUNT]) {
     struct adv360_status_input in;

@@ -289,14 +289,20 @@ static void render_frame(bool advance) {
 
     flush_pixels(out, ug.on);
 
-    if (ug.on && adv360_ug_effect_animates(ug.effect)) {
+    const struct adv360_wake_plan plan = adv360_ug_plan_wake(&ug, blink_limit, blink_elapsed_ms);
+
+    switch (plan.kind) {
+    case ADV360_WAKE_TICK:
         /* No-op if the timer is already pending, so redraws do not push an animation out. */
-        k_work_schedule(&tick_work, K_MSEC(ADV360_BLINK_TICK_MS));
-    } else if (ug.on && blink_limit >= 0) {
+        k_work_schedule(&tick_work, K_MSEC(plan.delay_ms));
+        break;
+    case ADV360_WAKE_BLINK_EDGE:
         /* The delay is computed from the clock, so replacing a pending wake is always correct. */
-        k_work_reschedule(&tick_work, K_MSEC(adv360_blink_next_edge_ms(blink_limit, blink_elapsed_ms)));
-    } else {
+        k_work_reschedule(&tick_work, K_MSEC(plan.delay_ms));
+        break;
+    default:
         k_work_cancel_delayable(&tick_work);
+        break;
     }
 }
 
@@ -341,19 +347,22 @@ static void sync_layer_to_peripherals(void) {
 }
 
 /*
- * Commands reach both halves through the global `&rgb_ug` / `&stp` behaviors, so the halves only
- * drift apart if one of them restarts or reconnects. The central has no event for that, so it
- * re-sends the shared LED state after boot and (debounced) after layer changes.
+ * Commands reach both halves through the global `&rgb_ug` / `&stp` behaviors, and layer changes are
+ * sent as they happen, so the halves only drift apart if one of them restarts or reconnects. The
+ * central has no event for that, so it re-sends the shared LED state after boot and (debounced)
+ * after layer changes, but only what a restarted half would not already have:
  *
- * Selecting an effect or switching on restarts the animation on the receiving half, so after boot
- * only effects that do not animate are re-sent: an animated effect would visibly restart on the
- * right half at every layer change.
+ * - the layer is sent at boot only (every layer change sends it immediately);
+ * - effect, colour and on/off are skipped while they equal the defaults a half boots with, so with
+ *   the stock setup a layer change costs a single split write;
+ * - selecting an effect or switching on restarts the animation on the receiving half, so after boot
+ *   only effects that do not animate are re-sent.
  */
 static bool full_sync_done;
 
 static void sync_work_handler(struct k_work *work) {
     struct adv360_ug snapshot;
-    bool resend_state;
+    const bool boot_sync = !full_sync_done;
 
     if (!ready) {
         return;
@@ -363,11 +372,14 @@ static void sync_work_handler(struct k_work *work) {
     snapshot = ug;
     ug_unlock();
 
-    resend_state = !full_sync_done || !adv360_ug_effect_animates(snapshot.effect);
     full_sync_done = true;
-    sync_layer_to_peripherals();
 
-    if (resend_state) {
+    if (boot_sync) {
+        sync_layer_to_peripherals();
+    }
+
+    if (boot_sync ||
+        (!adv360_ug_effect_animates(snapshot.effect) && !adv360_ug_is_default(&snapshot))) {
         invoke_on_peripherals("rgb_ug", RGB_EFS_CMD, snapshot.effect);
         invoke_on_peripherals("rgb_ug", RGB_COLOR_HSB_CMD,
                               RGB_COLOR_HSB_VAL(snapshot.color.h, snapshot.color.s, snapshot.color.b));

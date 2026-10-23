@@ -84,8 +84,37 @@ void adv360_ug_change_sat(struct adv360_ug *ug, int direction);
 void adv360_ug_change_brt(struct adv360_ug *ug, int direction);
 void adv360_ug_change_spd(struct adv360_ug *ug, int direction);
 
-/* Does the current effect change over time (so the glue must keep a 50 ms timer running)? */
+/* Is `effect` one that changes over time at all? */
 bool adv360_ug_effect_animates(uint8_t effect);
+
+/*
+ * Does the *current* frame sequence still change? Like adv360_ug_effect_animates(), but the
+ * self-test effect stops changing once its sweep has reached the final all-white frame, so the
+ * timer can stop too. When this is false, further ticks render exactly the same frame.
+ */
+bool adv360_ug_animating(const struct adv360_ug *ug);
+
+/* Is the shared LED state (effect, colour, on/off) what a freshly booted half starts with? */
+bool adv360_ug_is_default(const struct adv360_ug *ug);
+
+enum adv360_wake {
+    ADV360_WAKE_NONE,       /* nothing will change on its own: no timer */
+    ADV360_WAKE_TICK,       /* an animation needs the next tick: keep a pending timer */
+    ADV360_WAKE_BLINK_EDGE, /* an indicator blinks: wake when its phase next changes */
+};
+
+struct adv360_wake_plan {
+    enum adv360_wake kind;
+    uint32_t delay_ms;
+};
+
+/*
+ * When must the glue next redraw on its own? `blink_limit` is adv360_status_blink_limit() of the
+ * current state (-1 for none) and only counts for the status effect; `blink_elapsed_ms` is the time
+ * since that blinking began.
+ */
+struct adv360_wake_plan adv360_ug_plan_wake(const struct adv360_ug *ug, int blink_limit,
+                                            uint32_t blink_elapsed_ms);
 
 /*
  * Advance the current effect by one 50 ms tick and render it. `ctx` supplies what the indicator

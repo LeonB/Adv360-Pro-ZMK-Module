@@ -244,12 +244,23 @@ static void run_long(const struct variant *v) {
                 adv360_ug_change_spd(&ug, -1);
             }
 
+            struct adv360_rgb prev[3] = {{0}};
+
             for (int t = 0; t < 700; t++) {
                 struct fork_rgb want[3];
                 struct adv360_rgb got[3];
+                const bool was_animating = adv360_ug_animating(&ug);
 
                 v->tick(&w, want);
                 adv360_ug_tick(&ug, &ctx, got);
+
+                /* The driver stops its timer when this is false, so the frame must not change. */
+                if (t > 0 && !was_animating && memcmp(prev, got, sizeof(prev)) != 0) {
+                    char what[64];
+                    snprintf(what, sizeof(what), "frame changed while not animating e=%d tick=%d", effect, t);
+                    fail(v, -3, t, what);
+                }
+                memcpy(prev, got, sizeof(prev));
                 ticks_per_effect[effect]++;
                 steps++;
                 v->state(&fs);

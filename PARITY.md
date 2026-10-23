@@ -40,10 +40,14 @@ Goal: make this ZMK module (built on upstream ZMK) behave like the official
   not sent again, and an unpowered strip is not written to.
 - **Peripheral resync:** the fork pushes its LED state to the right half over a custom split message
   2.5 s after it connects. Upstream ZMK gives the central no event for a peripheral connecting, so
-  the central re-sends the state 2.5 s after boot and 0.5 s after each layer change instead (after
-  boot only for effects that do not animate, because selecting an effect restarts its animation).
-  Key commands always reach both halves directly. If only the right half restarts, it catches up at
-  the next layer change, or at the next key command when an animated effect is running.
+  the central re-sends after boot (everything) and 0.5 s after each layer change (only what a
+  restarted half would not already have: effect, colour and on/off when they differ from the boot
+  defaults, and not for animated effects, because selecting an effect restarts its animation). The
+  layer itself is sent at every layer change, so with the stock setup a layer change is one split
+  write. Key commands always reach both halves directly. If only the right half restarts, it
+  catches up at the next layer change, or at the next key command when an animated effect is running.
+- **Self-test effect:** it stops at its final all-white frame and its timer stops with it. The fork's
+  16-bit step counter eventually wraps and replays the sweep.
 - **Naming:** Kconfig options are `CONFIG_ZMK_ADV360_STATUS_LEDS_*`, not `ZMK_RGB_UNDERGLOW_*`
   (those symbols belong to upstream's underglow, which this module does not use). The fork's
   `BRT_SCALE` is `BRIGHTNESS_PERMILLE`.
