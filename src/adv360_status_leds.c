@@ -28,9 +28,19 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/hid_indicators.h>
 #include <zmk/keymap.h>
+#include <zmk/ble.h>
+#include <zmk/events/ble_active_profile_changed.h>
 #define ADV360_STATUS_HAS_CENTRAL_STATE 1
 #else
 #define ADV360_STATUS_HAS_CENTRAL_STATE 0
+#endif
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+#include <zmk/split/bluetooth/peripheral.h>
+#include <zmk/events/split_peripheral_status_changed.h>
+#define ADV360_STATUS_HAS_LINK_STATE 1
+#else
+#define ADV360_STATUS_HAS_LINK_STATE 0
 #endif
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
@@ -41,6 +51,7 @@
 #endif
 
 #include <zmk_keyboard_adv360/status_leds.h>
+#include <zmk_keyboard_adv360/status_render.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -60,55 +71,22 @@ static bool battery_preview;
 static zmk_hid_indicators_t hid_indicators;
 static uint8_t active_layer;
 
-static struct k_work update_work;
+/* Left half: Bluetooth state of the active host profile. */
+static uint8_t bt_profile;
+static bool bt_profile_open;
+static bool bt_profile_connected = true;
+
+/* Right half: link to the left half. Assume healthy until the first refresh says otherwise. */
+static bool link_bonded = true;
+static bool link_connected = true;
+
+/* 50 ms animation ticks while an LED blinks; 0 whenever nothing blinks. */
+static uint32_t blink_tick;
+#define ADV360_BLINK_TICK_MS 50
+
+static struct k_work_delayable update_work;
 
 #define ADV360_STP_SET_LAYER 2
-
-static struct led_rgb scale_rgb(uint32_t hex) {
-    const uint8_t brightness = CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS;
-
-    return (struct led_rgb){
-        .r = (uint8_t)((((hex >> 16) & 0xFF) * brightness) / 100),
-        .g = (uint8_t)((((hex >> 8) & 0xFF) * brightness) / 100),
-        .b = (uint8_t)((((hex >> 0) & 0xFF) * brightness) / 100),
-    };
-}
-
-static const uint32_t layer_colors[] = {
-    0x000000, 0xFFFFFF, 0x0000FF, 0x00FF00, 0xFF0000, 0xFF00FF, 0x00FFFF, 0xFFFF00,
-};
-
-static void layer_to_color_indices(uint8_t layer, uint8_t *left, uint8_t *right) {
-    if (layer < ARRAY_SIZE(layer_colors)) {
-        *left = layer;
-        *right = layer;
-        return;
-    }
-
-    *left = 1 + ((layer - ARRAY_SIZE(layer_colors)) / 6);
-    *right = 1 + ((layer - ARRAY_SIZE(layer_colors)) % 6);
-
-    if (*left <= *right) {
-        *right += 1;
-    }
-
-    *left %= ARRAY_SIZE(layer_colors);
-    *right %= ARRAY_SIZE(layer_colors);
-}
-
-static struct led_rgb battery_color(void) {
-    const uint8_t soc = zmk_battery_state_of_charge();
-
-    if (soc >= 80) {
-        return scale_rgb(0x00FF00);
-    } else if (soc >= 50) {
-        return scale_rgb(0xFFFF00);
-    } else if (soc >= 20) {
-        return scale_rgb(0xFF8C00);
-    } else {
-        return scale_rgb(0xFF0000);
-    }
-}
 
 static void clear_pixels(void) { memset(pixels, 0, sizeof(pixels)); }
 
@@ -122,14 +100,22 @@ static int set_ext_power(bool on) {
     return on ? ext_power_enable(ext_power) : ext_power_disable(ext_power);
 }
 
+/*
+ * ext_power_enable()/disable() schedule a settings save every time they are called, so only call
+ * them when the state really changes (the blink timer redraws every 50 ms).
+ */
+static int8_t ext_power_is_on = -1; /* -1 until the first call: the restored state is unknown */
+
 static int flush_pixels(bool power_on) {
     struct led_rgb out[STATUS_LED_COUNT];
     int err;
 
-    if (power_on) {
+    if (power_on && ext_power_is_on != 1) {
         err = set_ext_power(true);
         if (err) {
             LOG_WRN("Failed to enable Adv360 status LED power: %d", err);
+        } else {
+            ext_power_is_on = 1;
         }
     }
 
@@ -140,58 +126,91 @@ static int flush_pixels(bool power_on) {
         return err;
     }
 
-    if (!power_on) {
+    if (!power_on && ext_power_is_on != 0) {
         err = set_ext_power(false);
         if (err) {
             LOG_WRN("Failed to disable Adv360 status LED power: %d", err);
+        } else {
+            ext_power_is_on = 0;
         }
     }
 
     return 0;
 }
 
-static void render_status(void) {
-    uint8_t left_color;
-    uint8_t right_color;
-
-    clear_pixels();
-
-    if (!status_enabled && !battery_preview) {
-        return;
-    }
-
-    if (battery_preview) {
-        struct led_rgb color = battery_color();
-        for (int i = 0; i < ARRAY_SIZE(pixels); i++) {
-            pixels[i] = color;
-        }
-        return;
-    }
-
-    layer_to_color_indices(active_layer, &left_color, &right_color);
-
-#if IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
-    pixels[0] = (hid_indicators & HID_INDICATOR_CAPS_LOCK) ? scale_rgb(0xFFFFFF)
-                                                           : scale_rgb(0x000000);
-    pixels[1] = scale_rgb(0x000000);
-    pixels[2] = scale_rgb(layer_colors[left_color]);
-#elif IS_ENABLED(CONFIG_BOARD_ADV360_RIGHT)
-    pixels[0] = scale_rgb(layer_colors[right_color]);
-    pixels[1] = (hid_indicators & HID_INDICATOR_SCROLL_LOCK) ? scale_rgb(0xFFFFFF)
-                                                             : scale_rgb(0x000000);
-    pixels[2] = (hid_indicators & HID_INDICATOR_NUM_LOCK) ? scale_rgb(0xFFFFFF)
-                                                          : scale_rgb(0x000000);
-#else
-    pixels[0] = scale_rgb(layer_colors[left_color]);
+static void refresh_connection_state(void) {
+#if ADV360_STATUS_HAS_CENTRAL_STATE && IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
+    bt_profile = zmk_ble_active_profile_index();
+    bt_profile_open = zmk_ble_active_profile_is_open();
+    bt_profile_connected = zmk_ble_active_profile_is_connected();
+#endif
+#if ADV360_STATUS_HAS_LINK_STATE
+    link_bonded = zmk_split_bt_peripheral_is_bonded();
+    link_connected = zmk_split_bt_peripheral_is_connected();
 #endif
 }
 
-static void update_work_handler(struct k_work *work) {
-    render_status();
-    flush_pixels(status_enabled || battery_preview);
+/* Does the current Bluetooth / split-link state make an LED blink? */
+static bool blink_needed(void) {
+#if ADV360_STATUS_HAS_CENTRAL_STATE && IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
+    return bt_profile_open || !bt_profile_connected;
+#elif ADV360_STATUS_HAS_LINK_STATE
+    return !link_bonded || !link_connected;
+#else
+    return false;
+#endif
 }
 
-static void schedule_update(void) { k_work_submit(&update_work); }
+static void render_status(void) {
+    const struct adv360_status_input in = {
+#if IS_ENABLED(CONFIG_BOARD_ADV360_LEFT)
+        .side = ADV360_SIDE_LEFT,
+#elif IS_ENABLED(CONFIG_BOARD_ADV360_RIGHT)
+        .side = ADV360_SIDE_RIGHT,
+#else
+        .side = ADV360_SIDE_OTHER,
+#endif
+        .enabled = status_enabled,
+        .battery_preview = battery_preview,
+        .layer = active_layer,
+        .caps_lock = hid_indicators & HID_INDICATOR_CAPS_LOCK,
+        .num_lock = hid_indicators & HID_INDICATOR_NUM_LOCK,
+        .scroll_lock = hid_indicators & HID_INDICATOR_SCROLL_LOCK,
+        .battery_soc = battery_preview ? zmk_battery_state_of_charge() : 0,
+        .lock_color = CONFIG_ZMK_ADV360_STATUS_LEDS_LOCK_COLOR,
+        .bt_profile = bt_profile,
+        .bt_profile_open = bt_profile_open,
+        .bt_profile_connected = bt_profile_connected,
+        .link_bonded = link_bonded,
+        .link_connected = link_connected,
+        .tick = blink_tick,
+        .brightness_permille = CONFIG_ZMK_ADV360_STATUS_LEDS_BRIGHTNESS * 10,
+    };
+    struct adv360_rgb out[ADV360_STATUS_LED_COUNT];
+
+    adv360_status_render(&in, out);
+
+    clear_pixels();
+    for (int i = 0; i < ARRAY_SIZE(pixels) && i < ADV360_STATUS_LED_COUNT; i++) {
+        pixels[i] = (struct led_rgb){.r = out[i].r, .g = out[i].g, .b = out[i].b};
+    }
+}
+
+static void update_work_handler(struct k_work *work) {
+    refresh_connection_state();
+
+    const bool blinking = status_enabled && !battery_preview && blink_needed();
+
+    blink_tick = blinking ? blink_tick + 1 : 0;
+    render_status();
+    flush_pixels(status_enabled || battery_preview);
+
+    if (blinking) {
+        k_work_reschedule(&update_work, K_MSEC(ADV360_BLINK_TICK_MS));
+    }
+}
+
+static void schedule_update(void) { k_work_reschedule(&update_work, K_NO_WAIT); }
 
 #if ADV360_STATUS_CAN_SYNC_LAYER
 static void sync_layer_to_peripherals(void) {
@@ -248,10 +267,22 @@ static int adv360_status_leds_listener(const zmk_event_t *eh) {
     }
 
 #if ADV360_STATUS_HAS_CENTRAL_STATE
+    if (as_zmk_ble_active_profile_changed(eh) != NULL) {
+        schedule_update();
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
     if (as_zmk_layer_state_changed(eh) != NULL) {
         active_layer = zmk_keymap_highest_layer_active();
         schedule_update();
         sync_layer_to_peripherals();
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+#endif
+
+#if ADV360_STATUS_HAS_LINK_STATE
+    if (as_zmk_split_peripheral_status_changed(eh) != NULL) {
+        schedule_update();
         return ZMK_EV_EVENT_BUBBLE;
     }
 #endif
@@ -264,6 +295,10 @@ ZMK_SUBSCRIPTION(adv360_status_leds, zmk_hid_indicators_changed);
 ZMK_SUBSCRIPTION(adv360_status_leds, zmk_battery_state_changed);
 #if ADV360_STATUS_HAS_CENTRAL_STATE
 ZMK_SUBSCRIPTION(adv360_status_leds, zmk_layer_state_changed);
+ZMK_SUBSCRIPTION(adv360_status_leds, zmk_ble_active_profile_changed);
+#endif
+#if ADV360_STATUS_HAS_LINK_STATE
+ZMK_SUBSCRIPTION(adv360_status_leds, zmk_split_peripheral_status_changed);
 #endif
 
 static int adv360_status_leds_init(void) {
@@ -272,7 +307,7 @@ static int adv360_status_leds_init(void) {
         return -ENODEV;
     }
 
-    k_work_init(&update_work, update_work_handler);
+    k_work_init_delayable(&update_work, update_work_handler);
 
 #if ADV360_STATUS_HAS_CENTRAL_STATE
     hid_indicators = zmk_hid_indicators_get_current_profile();

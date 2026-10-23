@@ -20,4 +20,9 @@ config ZMK_ADV360_STATUS_LEDS_BRIGHTNESS
     range 1 100
     default 20
 
+config ZMK_ADV360_STATUS_LEDS_LOCK_COLOR
+    hex "RGB hex colour of the Caps/Num/Scroll Lock LEDs"
+    range 0x000000 0xFFFFFF
+    default 0xFFFFFF
+
 endif # ZMK_ADV360_STATUS_LEDS
