@@ -126,14 +126,18 @@
             compatible = "zmk,behavior-macro-one-param";
             label = "HYPER";
             #binding-cells = <1>;
-            bindings = <&kp LCTRL &kp LSHFT &kp LALT &kp LGUI>;
+            bindings = <&macro_press &kp LCTRL &kp LSHFT &kp LALT &kp LGUI
+                        &macro_tap &macro_param_1to1 &kp MACRO_PLACEHOLDER
+                        &macro_release &kp LCTRL &kp LSHFT &kp LALT &kp LGUI>;
         };
 
         meh_kp: meh_kp {
             compatible = "zmk,behavior-macro-one-param";
             label = "MEH";
             #binding-cells = <1>;
-            bindings = <&kp LCTRL &kp LSHFT &kp LALT>;
+            bindings = <&macro_press &kp LCTRL &kp LSHFT &kp LALT
+                        &macro_tap &macro_param_1to1 &kp MACRO_PLACEHOLDER
+                        &macro_release &kp LCTRL &kp LSHFT &kp LALT>;
         };
     };
 
