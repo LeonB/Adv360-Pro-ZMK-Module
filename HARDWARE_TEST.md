@@ -31,8 +31,11 @@ The LED strip is very dim by default (see "Brightness" below). Test in a dim roo
 ## 2. Keymap regression (nothing should have changed)
 
 - [ ] Base layer on both halves.
-- [ ] Keypad layer (`&tog 1`, position 6), toggles on and off.
-- [ ] Mod layer (hold Mod), layer 2 (`&mo 2`), layer 4 (`&mo 4`, position 66).
+- [ ] Keypad layer (`&tog 2`, position 6), toggles on and off.
+- [ ] Mod layer (hold Mod, `&mo 4`), layer 3 (`&mo 3`), Nav layer (`&mo 5`, position 66).
+- [ ] Homerow mods layer: Mod + H (`&tog 1`) turns it on and off. On: `A S D F` = Ctrl Alt Cmd Shift and
+      `J K L ;` = Shift Cmd Alt Ctrl when held, plain letters when tapped. Off: plain letters only.
+      Nav, Fn and Keypad still work with it on.
 - [ ] Your macros, `HYPR`, `&mt LCTRL ESC`, homerow behaviour.
 - [ ] Pointing / mouse behaviour, if you use any.
 - [ ] ZMK Studio: Mod + position 28 (`&studio_unlock`), then connect Studio and see the keymap.
@@ -44,10 +47,11 @@ Hold or toggle each layer and compare both halves:
 | Layer | Expect (both halves) |
 |---|---|
 | 0 Base | off (on the right half this means all three LEDs are dark, so it always looks "off" there) |
-| 1 Keypad | white |
-| 2 | blue |
-| 3 Mod | green |
-| 4 | red |
+| 1 Hrm (homerow mods on) | white |
+| 2 Keypad | blue |
+| 3 Fn | green |
+| 4 Mod | red |
+| 5 Nav | magenta |
 
 - [ ] Colours match the table and the two halves agree.
 - [ ] The colour changes on the right half as fast as on the left (no visible lag).
@@ -104,7 +108,7 @@ Select a profile with Mod + `1`..`5` (profiles 1-5).
 
 ## 9. Idle auto-off (left half is configured, as in official)
 
-Do this test **on the Keypad layer** (toggle it with `&tog 1`, position 6), so both halves show white.
+Do this test **on the Keypad layer** (toggle it with `&tog 2`, position 6), so both halves show blue.
 On the Base layer the right half has nothing to show (layer 0 is dark, and no lock or link problem
 lights anything), so you cannot tell whether it is on or off there.
 
