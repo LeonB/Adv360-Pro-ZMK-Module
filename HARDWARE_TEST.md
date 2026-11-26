@@ -36,6 +36,13 @@ The LED strip is very dim by default (see "Brightness" below). Test in a dim roo
 - [ ] Homerow mods layer: Mod + H (`&tog 1`) turns it on and off. On: `A S D F` = Ctrl Alt Cmd Shift and
       `J K L ;` = Shift Cmd Alt Ctrl when held, plain letters when tapped. Off: plain letters only.
       Nav, Fn and Keypad still work with it on.
+- [ ] App switcher: hold Delete (2nd key of the left thumb cluster, the Nav key), then tap Tab (no timing needed). The Cmd+Tab
+      switcher opens and stays open; the layer LEDs turn yellow (layer 7).
+      Tab / Shift + Tab / Left / Right move the selection. `J` and Down also go left, `K` and Up go right
+      (the switcher is horizontal, macOS ignores Up/Down there); Enter selects the app and closes it
+      (LEDs go back); Esc cancels. All other keys do nothing while it is open.
+      You can keep Delete held or let go; a second Tab moves on to the next app and does not restart it.
+      Nav + other keys (Nav layer) still work as before.
 - [ ] Your macros, `HYPR`, `&mt LCTRL ESC`, homerow behaviour.
 - [ ] Pointing / mouse behaviour, if you use any.
 - [ ] ZMK Studio: Mod + position 28 (`&studio_unlock`), then connect Studio and see the keymap.
