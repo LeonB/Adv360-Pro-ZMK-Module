@@ -89,3 +89,11 @@ config ZMK_ADV360_STATUS_LEDS_AUTO_OFF_USB
     depends on USB_DEVICE_STACK
 
 endif # ZMK_ADV360_STATUS_LEDS
+
+config ZMK_ADV360_CHATTER_PROBE
+    bool "Measure key chatter on the left half (debug)"
+    depends on ZMK_SPLIT_ROLE_CENTRAL
+    help
+      Records how soon a press follows the previous release and how short presses are, per key.
+      `&chatter` types the result as text. For raw contact bounce also set
+      CONFIG_ZMK_KSCAN_DEBOUNCE_PRESS_MS=0 and CONFIG_ZMK_KSCAN_DEBOUNCE_RELEASE_MS=0.

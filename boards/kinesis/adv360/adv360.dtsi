@@ -83,6 +83,13 @@
             display-name = "Status Tap";
             #binding-cells = <1>;
         };
+
+        // Types the key chatter measurement as text; does nothing unless the probe is enabled.
+        chatter: chatter {
+            compatible = "kinesis,behavior-adv360-chatter";
+            display-name = "Chatter Report";
+            #binding-cells = <0>;
+        };
     };
 };
 
